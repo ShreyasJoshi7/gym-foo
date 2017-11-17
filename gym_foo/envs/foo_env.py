@@ -1,228 +1,144 @@
-import pygame, random, sys ,os,time
-from pygame.locals import *
+import os, subprocess, time, signal
+import gym
+from gym import error, spaces
+from gym import utils
+from gym.utils import seeding
 
-WINDOWWIDTH = 800
-WINDOWHEIGHT = 600
-TEXTCOLOR = (255, 255, 255)
-BACKGROUNDCOLOR = (0, 0, 0)
-FPS = 40
-BADDIEMINSIZE = 10
-BADDIEMAXSIZE = 40
-BADDIEMINSPEED = 8
-BADDIEMAXSPEED = 8
-ADDNEWBADDIERATE = 6
-PLAYERMOVERATE = 5
-count=3
+try:
+    import hfo_py
+except ImportError as e:
+    raise error.DependencyNotInstalled("{}. (HINT: you can install HFO dependencies with 'pip install gym[foo].)'".format(e))
 
-def terminate():
-    pygame.quit()
-    sys.exit()
+import logging
+logger = logging.getLogger(__name__)
 
-def waitForPlayerToPressKey():
-    while True:
-        for event in pygame.event.get():
-            if event.type == QUIT:
-                terminate()
-            if event.type == KEYDOWN:
-                if event.key == K_ESCAPE: #escape quits
-                    terminate()
-                return
+class SoccerEnv(gym.Env, utils.EzPickle):
+    metadata = {'render.modes': ['human']}
 
-def playerHasHitBaddie(playerRect, baddies):
-    for b in baddies:
-        if playerRect.colliderect(b['rect']):
-            return True
-    return False
-
-def drawText(text, font, surface, x, y):
-    textobj = font.render(text, 1, TEXTCOLOR)
-    textrect = textobj.get_rect()
-    textrect.topleft = (x, y)
-    surface.blit(textobj, textrect)
-
-# set up pygame, the window, and the mouse cursor
-pygame.init()
-mainClock = pygame.time.Clock()
-windowSurface = pygame.display.set_mode((WINDOWWIDTH, WINDOWHEIGHT))
-pygame.display.set_caption('car race')
-pygame.mouse.set_visible(False)
-
-# fonts
-font = pygame.font.SysFont(None, 30)
-
-# sounds
-gameOverSound = pygame.mixer.Sound('music/crash.wav')
-pygame.mixer.music.load('music/car.wav')
-laugh = pygame.mixer.Sound('music/laugh.wav')
-
-
-# images
-playerImage = pygame.image.load('image/car1.png')
-car3 = pygame.image.load('image/car3.png')
-car4 = pygame.image.load('image/car4.png')
-playerRect = playerImage.get_rect()
-baddieImage = pygame.image.load('image/car2.png')
-sample = [car3,car4,baddieImage]
-wallLeft = pygame.image.load('image/left.png')
-wallRight = pygame.image.load('image/right.png')
-
-
-# "Start" screen
-drawText('Press any key to start the game.', font, windowSurface, (WINDOWWIDTH / 3) - 30, (WINDOWHEIGHT / 3))
-drawText('And Enjoy', font, windowSurface, (WINDOWWIDTH / 3), (WINDOWHEIGHT / 3)+30)
-pygame.display.update()
-waitForPlayerToPressKey()
-zero=0
-if not os.path.exists("data/save.dat"):
-    f=open("data/save.dat",'w')
-    f.write(str(zero))
-    f.close()   
-v=open("data/save.dat",'r')
-topScore = int(v.readline())
-v.close()
-while (count>0):
-    # start of the game
-    baddies = []
-    score = 0
-    playerRect.topleft = (WINDOWWIDTH / 2, WINDOWHEIGHT - 50)
-    moveLeft = moveRight = moveUp = moveDown = False
-    reverseCheat = slowCheat = False
-    baddieAddCounter = 0
-    pygame.mixer.music.play(-1, 0.0)
-
-    while True: # the game loop
-        score += 1 # increase score
-
-        for event in pygame.event.get():
-            
-            if event.type == QUIT:
-                terminate()
-
-            if event.type == KEYDOWN:
-                if event.key == ord('z'):
-                    reverseCheat = True
-                if event.key == ord('x'):
-                    slowCheat = True
-                if event.key == K_LEFT or event.key == ord('a'):
-                    moveRight = False
-                    moveLeft = True
-                if event.key == K_RIGHT or event.key == ord('d'):
-                    moveLeft = False
-                    moveRight = True
-                if event.key == K_UP or event.key == ord('w'):
-                    moveDown = False
-                    moveUp = True
-                if event.key == K_DOWN or event.key == ord('s'):
-                    moveUp = False
-                    moveDown = True
-
-            if event.type == KEYUP:
-                if event.key == ord('z'):
-                    reverseCheat = False
-                    score = 0
-                if event.key == ord('x'):
-                    slowCheat = False
-                    score = 0
-                if event.key == K_ESCAPE:
-                        terminate()
-            
-
-                if event.key == K_LEFT or event.key == ord('a'):
-                    moveLeft = False
-                if event.key == K_RIGHT or event.key == ord('d'):
-                    moveRight = False
-                if event.key == K_UP or event.key == ord('w'):
-                    moveUp = False
-                if event.key == K_DOWN or event.key == ord('s'):
-                    moveDown = False
-
-            
-
-        # Add new baddies at the top of the screen
-        if not reverseCheat and not slowCheat:
-            baddieAddCounter += 1
-        if baddieAddCounter == ADDNEWBADDIERATE:
-            baddieAddCounter = 0
-            baddieSize =30 
-            newBaddie = {'rect': pygame.Rect(random.randint(140, 485), 0 - baddieSize, 23, 47),
-                        'speed': random.randint(BADDIEMINSPEED, BADDIEMAXSPEED),
-                        'surface':pygame.transform.scale(random.choice(sample), (23, 47)),
-                        }
-            baddies.append(newBaddie)
-            sideLeft= {'rect': pygame.Rect(0,0,126,600),
-                       'speed': random.randint(BADDIEMINSPEED, BADDIEMAXSPEED),
-                       'surface':pygame.transform.scale(wallLeft, (126, 599)),
-                       }
-            baddies.append(sideLeft)
-            sideRight= {'rect': pygame.Rect(497,0,303,600),
-                       'speed': random.randint(BADDIEMINSPEED, BADDIEMAXSPEED),
-                       'surface':pygame.transform.scale(wallRight, (303, 599)),
-                       }
-            baddies.append(sideRight)
-            
-            
-
-        # Move the player around.
-        if moveLeft and playerRect.left > 0:
-            playerRect.move_ip(-1 * PLAYERMOVERATE, 0)
-        if moveRight and playerRect.right < WINDOWWIDTH:
-            playerRect.move_ip(PLAYERMOVERATE, 0)
-        if moveUp and playerRect.top > 0:
-            playerRect.move_ip(0, -1 * PLAYERMOVERATE)
-        if moveDown and playerRect.bottom < WINDOWHEIGHT:
-            playerRect.move_ip(0, PLAYERMOVERATE)
+    def __init__(self):
+        metadata = {'render.modes': ['human']}
         
-        for b in baddies:
-            if not reverseCheat and not slowCheat:
-                b['rect'].move_ip(0, b['speed'])
-            elif reverseCheat:
-                b['rect'].move_ip(0, -5)
-            elif slowCheat:
-                b['rect'].move_ip(0, 1)
 
-         
-        for b in baddies[:]:
-            if b['rect'].top > WINDOWHEIGHT:
-                baddies.remove(b)
+    def __del__(self):
+        self.env.act(hfo_py.QUIT)
+        self.env.step()
+        os.kill(self.server_process.pid, signal.SIGINT)
+        if self.viewer is not None:
+            os.kill(self.viewer.pid, signal.SIGKILL)
 
-        # Draw the game world on the window.
-        windowSurface.fill(BACKGROUNDCOLOR)
+    def _configure_environment(self):
+        """
+        Provides a chance for subclasses to override this method and supply
+        a different server configuration. By default, we initialize one
+        offense agent against no defenders.
+        """
+        self._start_hfo_server()
 
-        # Draw the score and top score.
-        drawText('Score: %s' % (score), font, windowSurface, 128, 0)
-        drawText('Top Score: %s' % (topScore), font, windowSurface,128, 20)
-        drawText('Rest Life: %s' % (count), font, windowSurface,128, 40)
-        
-        windowSurface.blit(playerImage, playerRect)
+    def _start_hfo_server(self, frames_per_trial=500,
+                          untouched_time=100, offense_agents=1,
+                          defense_agents=0, offense_npcs=0,
+                          defense_npcs=0, sync_mode=True, port=6000,
+                          offense_on_ball=0, fullstate=True, seed=-1,
+                          ball_x_min=0.0, ball_x_max=0.2,
+                          verbose=False, log_game=False,
+                          log_dir="log"):
+        """
+        Starts the Half-Field-Offense server.
+        frames_per_trial: Episodes end after this many steps.
+        untouched_time: Episodes end if the ball is untouched for this many steps.
+        offense_agents: Number of user-controlled offensive players.
+        defense_agents: Number of user-controlled defenders.
+        offense_npcs: Number of offensive bots.
+        defense_npcs: Number of defense bots.
+        sync_mode: Disabling sync mode runs server in real time (SLOW!).
+        port: Port to start the server on.
+        offense_on_ball: Player to give the ball to at beginning of episode.
+        fullstate: Enable noise-free perception.
+        seed: Seed the starting positions of the players and ball.
+        ball_x_[min/max]: Initialize the ball this far downfield: [0,1]
+        verbose: Verbose server messages.
+        log_game: Enable game logging. Logs can be used for replay + visualization.
+        log_dir: Directory to place game logs (*.rcg).
+        """
+        self.server_port = port
+        cmd = self.hfo_path + \
+              " --headless --frames-per-trial %i --untouched-time %i --offense-agents %i"\
+              " --defense-agents %i --offense-npcs %i --defense-npcs %i"\
+              " --port %i --offense-on-ball %i --seed %i --ball-x-min %f"\
+              " --ball-x-max %f --log-dir %s"\
+              % (frames_per_trial, untouched_time, offense_agents,
+                 defense_agents, offense_npcs, defense_npcs, port,
+                 offense_on_ball, seed, ball_x_min, ball_x_max,
+                 log_dir)
+        if not sync_mode: cmd += " --no-sync"
+        if fullstate:     cmd += " --fullstate"
+        if verbose:       cmd += " --verbose"
+        if not log_game:  cmd += " --no-logging"
+        print('Starting server with command: %s' % cmd)
+        self.server_process = subprocess.Popen(cmd.split(' '), shell=False)
+        time.sleep(10) # Wait for server to startup before connecting a player
 
-        
-        for b in baddies:
-            windowSurface.blit(b['surface'], b['rect'])
+    def _start_viewer(self):
+        """
+        Starts the SoccerWindow visualizer. Note the viewer may also be
+        used with a *.rcg logfile to replay a game. See details at
+        https://github.com/LARG/HFO/blob/master/doc/manual.pdf.
+        """
+        cmd = hfo_py.get_viewer_path() +\
+              " --connect --port %d" % (self.server_port)
+        self.viewer = subprocess.Popen(cmd.split(' '), shell=False)
 
-        pygame.display.update()
+    def _step(self, action):
+        self._take_action(action)
+        self.status = self.env.step()
+        reward = self._get_reward()
+        ob = self.env.getState()
+        episode_over = self.status != hfo_py.IN_GAME
+        return ob, reward, episode_over, {}
 
-        # Check if any of the car have hit the player.
-        if playerHasHitBaddie(playerRect, baddies):
-            if score > topScore:
-                g=open("data/save.dat",'w')
-                g.write(str(score))
-                g.close()
-                topScore = score
-            break
+    def _take_action(self, action):
+        """ Converts the action space into an HFO action. """
+        action_type = ACTION_KEYDOWN[action[0]]
+        if action_type == hfo_py.K_UP:
+            self.env.act(action_type, action[1], action[2])
+        elif action_type == hfo_py.K_LEFT:
+            self.env.act(action_type, action[3], action[4])
+        elif action_type == hfo_py.K_RIGHT:
+            self.env.act(action_type, action[5], action[6])
+        else:
+            print('Unrecognized action %d' % action_type)
+            self.env.act(hfo_py.NOOP)
 
-        mainClock.tick(FPS)
+    def _get_reward(self):
+        """ Reward is given for scoring a goal. """
+        if self.status == hfo_py.GOAL:
+            return 1
+        else:
+            return 0
 
-    # "Game Over" screen.
-    pygame.mixer.music.stop()
-    count=count-1
-    gameOverSound.play()
-    time.sleep(1)
-    if (count==0):
-     laugh.play()
-     drawText('Game over', font, windowSurface, (WINDOWWIDTH / 3), (WINDOWHEIGHT / 3))
-     drawText('Press any key to play again.', font, windowSurface, (WINDOWWIDTH / 3) - 80, (WINDOWHEIGHT / 3) + 30)
-     pygame.display.update()
-     time.sleep(2)
-     waitForPlayerToPressKey()
-     count=3
-     gameOverSound.stop()
+    def _reset(self):
+        """ Repeats NO-OP action until a new episode begins. """
+        while self.status == hfo_py.IN_GAME:
+            self.env.act(hfo_py.NOOP)
+            self.status = self.env.step()
+        while self.status != hfo_py.IN_GAME:
+            self.env.act(hfo_py.NOOP)
+            self.status = self.env.step()
+        return self.env.getState()
+
+    def _render(self, mode='human', close=False):
+        """ Viewer only supports human mode currently. """
+        if close:
+            if self.viewer is not None:
+                os.kill(self.viewer.pid, signal.SIGKILL)
+        else:
+            if self.viewer is None:
+                self._start_viewer()
+
+ACTION_KEYDOW = {
+    0 : hfo_py.KEYDOWN,
+    1 : hfo_py.K_UP,
+    2 : hfo_py.K_LEFT,
+    3 : hfo_py.K_RIGHT, 
+    
+}
