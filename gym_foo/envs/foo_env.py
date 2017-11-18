@@ -1,144 +1,115 @@
-import os, subprocess, time, signal
+import math
 import gym
-from gym import error, spaces
-from gym import utils
+from gym import spaces
 from gym.utils import seeding
+import numpy as np
 
-try:
-    import hfo_py
-except ImportError as e:
-    raise error.DependencyNotInstalled("{}. (HINT: you can install HFO dependencies with 'pip install gym[foo].)'".format(e))
-
-import logging
-logger = logging.getLogger(__name__)
-
-class SoccerEnv(gym.Env, utils.EzPickle):
-    metadata = {'render.modes': ['human']}
+class fooEnv(gym.Env):
+    metadata = {
+        'render.modes': ['human', 'rgb_array'],
+        'video.frames_per_second': 30
+    }
 
     def __init__(self):
-        metadata = {'render.modes': ['human']}
-        
+        self.min_position = -1.2
+        self.max_position = 0.6
+        self.max_speed = 0.07
+        self.goal_position = 0.5
 
-    def __del__(self):
-        self.env.act(hfo_py.QUIT)
-        self.env.step()
-        os.kill(self.server_process.pid, signal.SIGINT)
-        if self.viewer is not None:
-            os.kill(self.viewer.pid, signal.SIGKILL)
+        self.low = np.array([self.min_position, -self.max_speed])
+        self.high = np.array([self.max_position, self.max_speed])
 
-    def _configure_environment(self):
-        """
-        Provides a chance for subclasses to override this method and supply
-        a different server configuration. By default, we initialize one
-        offense agent against no defenders.
-        """
-        self._start_hfo_server()
+        self.viewer = None
 
-    def _start_hfo_server(self, frames_per_trial=500,
-                          untouched_time=100, offense_agents=1,
-                          defense_agents=0, offense_npcs=0,
-                          defense_npcs=0, sync_mode=True, port=6000,
-                          offense_on_ball=0, fullstate=True, seed=-1,
-                          ball_x_min=0.0, ball_x_max=0.2,
-                          verbose=False, log_game=False,
-                          log_dir="log"):
-        """
-        Starts the Half-Field-Offense server.
-        frames_per_trial: Episodes end after this many steps.
-        untouched_time: Episodes end if the ball is untouched for this many steps.
-        offense_agents: Number of user-controlled offensive players.
-        defense_agents: Number of user-controlled defenders.
-        offense_npcs: Number of offensive bots.
-        defense_npcs: Number of defense bots.
-        sync_mode: Disabling sync mode runs server in real time (SLOW!).
-        port: Port to start the server on.
-        offense_on_ball: Player to give the ball to at beginning of episode.
-        fullstate: Enable noise-free perception.
-        seed: Seed the starting positions of the players and ball.
-        ball_x_[min/max]: Initialize the ball this far downfield: [0,1]
-        verbose: Verbose server messages.
-        log_game: Enable game logging. Logs can be used for replay + visualization.
-        log_dir: Directory to place game logs (*.rcg).
-        """
-        self.server_port = port
-        cmd = self.hfo_path + \
-              " --headless --frames-per-trial %i --untouched-time %i --offense-agents %i"\
-              " --defense-agents %i --offense-npcs %i --defense-npcs %i"\
-              " --port %i --offense-on-ball %i --seed %i --ball-x-min %f"\
-              " --ball-x-max %f --log-dir %s"\
-              % (frames_per_trial, untouched_time, offense_agents,
-                 defense_agents, offense_npcs, defense_npcs, port,
-                 offense_on_ball, seed, ball_x_min, ball_x_max,
-                 log_dir)
-        if not sync_mode: cmd += " --no-sync"
-        if fullstate:     cmd += " --fullstate"
-        if verbose:       cmd += " --verbose"
-        if not log_game:  cmd += " --no-logging"
-        print('Starting server with command: %s' % cmd)
-        self.server_process = subprocess.Popen(cmd.split(' '), shell=False)
-        time.sleep(10) # Wait for server to startup before connecting a player
+        self.action_space = spaces.Discrete(3)
+        self.observation_space = spaces.Box(self.low, self.high)
 
-    def _start_viewer(self):
-        """
-        Starts the SoccerWindow visualizer. Note the viewer may also be
-        used with a *.rcg logfile to replay a game. See details at
-        https://github.com/LARG/HFO/blob/master/doc/manual.pdf.
-        """
-        cmd = hfo_py.get_viewer_path() +\
-              " --connect --port %d" % (self.server_port)
-        self.viewer = subprocess.Popen(cmd.split(' '), shell=False)
+        self._seed()
+        self.reset()
+
+    def _seed(self, seed=None):
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]
 
     def _step(self, action):
-        self._take_action(action)
-        self.status = self.env.step()
-        reward = self._get_reward()
-        ob = self.env.getState()
-        episode_over = self.status != hfo_py.IN_GAME
-        return ob, reward, episode_over, {}
+        assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
 
-    def _take_action(self, action):
-        """ Converts the action space into an HFO action. """
-        action_type = ACTION_KEYDOWN[action[0]]
-        if action_type == hfo_py.K_UP:
-            self.env.act(action_type, action[1], action[2])
-        elif action_type == hfo_py.K_LEFT:
-            self.env.act(action_type, action[3], action[4])
-        elif action_type == hfo_py.K_RIGHT:
-            self.env.act(action_type, action[5], action[6])
-        else:
-            print('Unrecognized action %d' % action_type)
-            self.env.act(hfo_py.NOOP)
+        position, velocity = self.state
+        velocity += (action-1)*0.001 + math.cos(3*position)*(-0.0025)
+        velocity = np.clip(velocity, -self.max_speed, self.max_speed)
+        position += velocity
+        position = np.clip(position, self.min_position, self.max_position)
+        if (position==self.min_position and velocity<0): velocity = 0
 
-    def _get_reward(self):
-        """ Reward is given for scoring a goal. """
-        if self.status == hfo_py.GOAL:
-            return 1
-        else:
-            return 0
+        done = bool(position >= self.goal_position)
+        reward = -1.0
+
+        self.state = (position, velocity)
+        return np.array(self.state), reward, done, {}
 
     def _reset(self):
-        """ Repeats NO-OP action until a new episode begins. """
-        while self.status == hfo_py.IN_GAME:
-            self.env.act(hfo_py.NOOP)
-            self.status = self.env.step()
-        while self.status != hfo_py.IN_GAME:
-            self.env.act(hfo_py.NOOP)
-            self.status = self.env.step()
-        return self.env.getState()
+        self.state = np.array([self.np_random.uniform(low=-0.6, high=-0.4), 0])
+        return np.array(self.state)
+
+    def _height(self, xs):
+        return np.sin(3 * xs)*.45+.55
 
     def _render(self, mode='human', close=False):
-        """ Viewer only supports human mode currently. """
         if close:
             if self.viewer is not None:
-                os.kill(self.viewer.pid, signal.SIGKILL)
-        else:
-            if self.viewer is None:
-                self._start_viewer()
+                self.viewer.close()
+                self.viewer = None
+            return
 
-ACTION_KEYDOW = {
-    0 : hfo_py.KEYDOWN,
-    1 : hfo_py.K_UP,
-    2 : hfo_py.K_LEFT,
-    3 : hfo_py.K_RIGHT, 
-    
-}
+        screen_width = 600
+        screen_height = 400
+
+        world_width = self.max_position - self.min_position
+        scale = screen_width/world_width
+        carwidth=40
+        carheight=20
+
+
+        if self.viewer is None:
+            from gym.envs.classic_control import rendering
+            self.viewer = rendering.Viewer(screen_width, screen_height)
+            xs = np.linspace(self.min_position, self.max_position, 100)
+            ys = self._height(xs)
+            xys = list(zip((xs-self.min_position)*scale, ys*scale))
+
+            self.track = rendering.make_polyline(xys)
+            self.track.set_linewidth(4)
+            self.viewer.add_geom(self.track)
+
+            clearance = 10
+
+            l,r,t,b = -carwidth/2, carwidth/2, carheight, 0
+            car = rendering.FilledPolygon([(l,b), (l,t), (r,t), (r,b)])
+            car.add_attr(rendering.Transform(translation=(0, clearance)))
+            self.cartrans = rendering.Transform()
+            car.add_attr(self.cartrans)
+            self.viewer.add_geom(car)
+            frontwheel = rendering.make_circle(carheight/2.5)
+            frontwheel.set_color(.5, .5, .5)
+            frontwheel.add_attr(rendering.Transform(translation=(carwidth/4,clearance)))
+            frontwheel.add_attr(self.cartrans)
+            self.viewer.add_geom(frontwheel)
+            backwheel = rendering.make_circle(carheight/2.5)
+            backwheel.add_attr(rendering.Transform(translation=(-carwidth/4,clearance)))
+            backwheel.add_attr(self.cartrans)
+            backwheel.set_color(.5, .5, .5)
+            self.viewer.add_geom(backwheel)
+            flagx = (self.goal_position-self.min_position)*scale
+            flagy1 = self._height(self.goal_position)*scale
+            flagy2 = flagy1 + 50
+            flagpole = rendering.Line((flagx, flagy1), (flagx, flagy2))
+            self.viewer.add_geom(flagpole)
+            flag = rendering.FilledPolygon([(flagx, flagy2), (flagx, flagy2-10), (flagx+25, flagy2-5)])
+            flag.set_color(.8,.8,0)
+            self.viewer.add_geom(flag)
+
+        pos = self.state[0]
+        self.cartrans.set_translation((pos-self.min_position)*scale, self._height(pos)*scale)
+        self.cartrans.set_rotation(math.cos(3 * pos))
+
+        return self.viewer.render(return_rgb_array = mode=='rgb_array')
