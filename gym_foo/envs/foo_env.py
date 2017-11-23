@@ -57,9 +57,12 @@ def playerHasHitBaddie(playerRect, baddies,baddieAddCounter):
     reward = 6.0
     for b in baddies:
         if playerRect.colliderect(b['rect']):
-            reward += 1000.0/float(baddieAddCounter)
+            reward -= 1000.0/float(baddieAddCounter)
             print(reward)
             return True
+        else: 
+              reward = reward + 1000.0/float(baddieAddCounter)
+              print(reward)
     return False
 
 
@@ -213,7 +216,7 @@ class RoadRunner(gym.Env):
                                 b['rect'].move_ip(0, -5)
                             elif slowCheat:
                                 b['rect'].move_ip(0, 1)
-                        playerHasHitBaddie(playerRect, baddies,baddieAddCounter)
+                        #playerHasHitBaddie(playerRect, baddies,baddieAddCounter)
 			 
                         for b in baddies[:]:
                             if b['rect'].top > WINDOWHEIGHT:
@@ -236,8 +239,8 @@ class RoadRunner(gym.Env):
                         pygame.display.update()
 
                         #playerHasHitBaddie(playerRect, baddies,baddieAddCounter) 
-                        '''
-                        if playerHasHitBaddie(playerRect, baddies):
+                        
+                        if playerHasHitBaddie(playerRect, baddies,baddieAddCounter):
                             if score > topScore:
                                 g=open("data/save.dat",'w')
                                 g.write(str(score))
@@ -245,7 +248,7 @@ class RoadRunner(gym.Env):
                                 topScore = score
                                 self.env.reward += 1000.0/len(self.env.track)
                                 print(reward)
-                            break '''
+                            break 
 				
 	def _seed(self, seed=None):
 		self.np_random, seed = seeding.np_random(seed)
@@ -260,3 +263,4 @@ if __name__=="__main__":
 
 	#pygame.display.update()
 	#waitForPlayerToPressKey()
+	
