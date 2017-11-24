@@ -74,7 +74,7 @@ def terminate(self):    #__del__(self)
 	    self.sys.exit()
 
 
-class RoadRunner(gym.Env):
+class fooEnv(gym.Env):
 	metadata = {
 			'render.modes': ['human', 'rgb_array', 'state_pixels'],
         'video.frames_per_second' : FPS
@@ -256,7 +256,7 @@ class RoadRunner(gym.Env):
 
 
 if __name__=="__main__":
-	env = RoadRunner()
+	env = fooEnv()
 	#env.render()
 	#drawText('Press any key to start the game.',font, windowSurface, (WINDOWWIDTH / 3) - 30, (WINDOWHEIGHT / 3))
 	#drawText('And Enjoy', font, windowSurface, (WINDOWWIDTH / 3), (WINDOWHEIGHT / 3)+30)
