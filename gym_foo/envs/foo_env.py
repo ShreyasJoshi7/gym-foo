@@ -255,12 +255,5 @@ class fooEnv(gym.Env):
 		return [seed]
 
 
-if __name__=="__main__":
-	env = fooEnv()
-	#env.render()
-	#drawText('Press any key to start the game.',font, windowSurface, (WINDOWWIDTH / 3) - 30, (WINDOWHEIGHT / 3))
-	#drawText('And Enjoy', font, windowSurface, (WINDOWWIDTH / 3), (WINDOWHEIGHT / 3)+30)
 
-	#pygame.display.update()
-	#waitForPlayerToPressKey()
 	
