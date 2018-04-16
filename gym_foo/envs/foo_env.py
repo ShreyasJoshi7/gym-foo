@@ -255,5 +255,7 @@ class fooEnv(gym.Env):
 		return [seed]
 
 
-
+if __name__ == '__main__':
+    env = gym.make("gym_foo-v4")
+    fooEnv(env)
 	
