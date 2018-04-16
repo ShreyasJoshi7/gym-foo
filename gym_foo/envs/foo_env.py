@@ -256,6 +256,6 @@ class fooEnv(gym.Env):
 
 
 if __name__ == '__main__':
-    env = gym.make("gym_foo-v4")
+    env = gym.make("gym_foo-v0")
     fooEnv(env)
 	
